@@ -1,0 +1,141 @@
+version: "3"
+
+services:
+  redis:
+    image: redis:6-alpine
+    restart: always
+    command: 
+      - redis-server
+      - /usr/local/etc/redis/redis.conf
+    networks:
+      - redis
+    volumes:
+      - ./compose/config/redis.conf:/usr/local/etc/redis/redis.conf
+      - /tmp/redis/socket:/var/run/redis
+      - redis_data:/data
+
+  ospd-openvas:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/Dockerfile.ospd-openvas
+      args:
+        VERSION: v20.8.0
+        RUN_NVT_SYNC: "no"
+    restart: always
+    command:
+      - ospd-openvas 
+      - --foreground 
+      - --bind-address 0.0.0.0 
+      - --port 6060
+    networks:
+      - redis
+      - gvm
+    ports:
+      - 6060:6060
+    expose:
+      - 6060
+    volumes:
+      - ./compose/config/openvas.conf:/usr/local/etc/openvas/openvas.conf
+      - ./compose/certificates/keys:/usr/var/lib/gvm/private/CA
+      - ./compose/certificates/certs:/usr/var/lib/gvm/CA
+      - /tmp/redis/socket:/var/run/redis
+      - /tmp/ospd-openvas/socket:/var/run
+      - ospd-openvas_data:/usr/local/var/lib/openvas/plugins
+    depends_on:
+      - redis
+
+  postgres:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/Dockerfile.gvmd-postgres
+      args:
+        VERSION: v20.8.0
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: trust
+      POSTGRES_USER: root
+      PGDATA: /var/lib/postgresql/data/pgdata
+    restart: always
+    networks:
+      - postgres
+    volumes:
+      - ./compose/config/postgres.conf:/etc/postgresql/11/main/postgresql.conf
+      - /tmp/postgres/socket:/var/run/postgresql
+      - /tmp/postgres/data:/var/lib/postgresql/data/
+
+  gvmd:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/Dockerfile.gvmd
+      args:
+        VERSION: v20.8.0
+        INSTALL_PDFLATEX: "yes"
+        RUN_FEED_SYNC: "no"
+    restart: always
+    command:
+      - --foreground
+      - --listen=0.0.0.0
+      - --port=7070
+    environment:
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: dummy_password
+      OPENVAS_SCANNER_HOST: 0.0.0.0
+      OPENVAS_SCANNER_PORT: 6060
+    networks:
+      - postgres
+      - gvm
+    ports:
+      - 7070:7070
+    expose:
+      - 7070
+    volumes:
+      - ./compose/certificates/keys:/usr/local/var/lib/gvm/private/CA
+      - ./compose/certificates/certs:/usr/local/var/lib/gvm/CA
+      - /tmp/postgres/socket:/var/run/postgresql
+      - gvmd_data:/usr/local/var/lib/gvm/data-objects
+      - gvmd-scap_data:/usr/local/var/lib/gvm/scap-data
+      - gvmd-cert_data:/usr/local/var/lib/gvm/cert-data
+      - gvmd-gnupg_data:/usr/local/var/lib/gvm/gvmd/gnupg
+    depends_on:
+      - postgres
+
+  gsad:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/Dockerfile.gsad
+      args:
+        VERSION: v20.8.0
+    restart: always
+    command:
+      - --foreground
+      - --http-only 
+      - --no-redirect
+      - --listen=0.0.0.0 
+      - --port=8080
+      - --mlisten=0.0.0.0
+      - --mport=7070
+    networks:
+      - gvm
+    ports:
+      - 8080:8080
+    expose:
+      - 8080
+    volumes:
+      - ./compose/certificates/keys:/usr/var/lib/gvm/private/CA
+      - ./compose/certificates/certs:/usr/var/lib/gvm/CA
+
+networks:
+  redis:
+    driver: bridge
+  postgres:
+    driver: bridge
+  gvm:
+    driver: bridge
+
+volumes:
+  redis_data:
+  postgres_data:
+  ospd-openvas_data:
+  gvmd_data:
+  gvmd-scap_data:
+  gvmd-cert_data:
+  gvmd-gnupg_data:
