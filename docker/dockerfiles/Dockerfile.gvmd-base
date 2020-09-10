@@ -1,0 +1,54 @@
+ARG VERSION
+
+
+## Build image
+FROM aleksanderllada/gvm-base:${VERSION} AS builder
+
+# Install development libraries
+RUN apt-get update && apt-get install -y \
+    git \
+    gcc \
+    cmake \
+    gnutls-bin \
+    pkg-config \
+    xsltproc \
+    postgresql-server-dev-11 \
+    libglib2.0-dev \
+    libgnutls28-dev \
+    libpq-dev \
+    libical-dev \
+    libgpgme-dev \
+    libradcli-dev \
+    libgnutls28-dev \
+    libhiredis-dev \
+    libssh-gcrypt-dev
+
+ARG VERSION
+RUN git clone --depth 1 --branch $VERSION https://github.com/greenbone/gvmd.git && \
+    cd gvmd && \
+    mkdir build && \
+    cd build && \
+    cmake -DCMAKE_BUILD_TYPE=Release .. && \
+    make install
+
+
+## Release image
+FROM debian:buster-slim
+
+# Install runtime libraries
+RUN apt-get update && apt-get install -y \
+    libc6 \
+    libglib2.0 \
+    libgnutls30 \
+    libgnutlsxx28 \
+    libgpgme11 \
+    libhiredis0.14 \
+    libical3 \
+    libpq5 \
+    libradcli4 \
+    libssh-gcrypt-4 \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY scripts/sync-greenbone-feed-data.sh .
+
+COPY --from=builder /usr/local /usr/local
