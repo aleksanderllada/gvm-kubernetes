@@ -1,0 +1,4 @@
+apiVersion: v2
+description: Helm chart for Greenbone Vulnerability Manager
+name: gvm
+version: v0.1.0

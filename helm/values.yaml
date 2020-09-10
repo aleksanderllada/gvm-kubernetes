@@ -1,0 +1,179 @@
+version: "v20.8.0"
+
+# Annotations that will propagate to all deployments.
+annotations: {}
+
+# Annotations that will propagate to all pods.
+podAnnotations: {}
+
+ingress:
+    enabled: false
+    annotations: {}
+    host: ""
+
+certificates:
+  create: true
+  domain: "gvm.local"
+
+gsad:
+  replicaCount: 1
+  image:
+    pullPolicy: IfNotPresent
+    repository: "aleksanderllada/gsad"
+
+  secrets: {}
+
+  env: {}
+
+  service:
+    type: ClusterIP
+    port: "8080"
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    # limits:
+    #   cpu: 100m
+    #   memory: 128Mi
+
+  livenessProbe:
+    enabled: true
+    path: "/"
+    initialDelaySeconds: 5
+    timeoutSeconds: 5
+
+  readinessProbe:
+    enabled: true
+    path: "/"
+    initialDelaySeconds: 5
+    timeoutSeconds: 5
+    periodSeconds: 5
+    successThreshold: 10
+
+gvmd:
+  replicaCount: 1
+  image:
+    pullPolicy: IfNotPresent
+    repository: "aleksanderllada/gvmd"
+
+  secrets:
+    ADMIN_USERNAME: ""
+    ADMIN_PASSWORD: ""
+
+  env:
+    MIGRATE_DATABASE: "false"
+
+  service:
+    type: ClusterIP
+    port: "8080"
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    # limits:
+    #   cpu: 100m
+    #   memory: 128Mi
+
+  livenessProbe:
+    enabled: true
+    path: "/ping"
+    port: 8080
+    initialDelaySeconds: 5
+    timeoutSeconds: 5
+
+  readinessProbe:
+    enabled: true
+    path: "/ping"
+    port: 8080
+    initialDelaySeconds: 30
+    timeoutSeconds: 10
+    periodSeconds: 10
+    successThreshold: 1
+
+  syncFeedData:
+    enabled: true
+    image:
+      pullPolicy: IfNotPresent
+      repository: "aleksanderllada/gvm-gvmd-base"
+    cronjob:
+      enabled: true
+      createServiceAccount: true
+
+  postgres:
+    storage:
+      enabled: true
+      size: 50Gi
+    image:
+      pullPolicy: IfNotPresent
+      repository: "aleksanderllada/gvmd-postgres"
+
+  # It is recommended to have all these enabled in order to avoid resyncing data
+  volumes:
+    gnupg:
+      enabled: true
+      size: 2Gi
+    gvmd:
+      enabled: true
+      size: 2Gi
+    scap:
+      enabled: true
+      size: 2Gi
+    cert:
+      enabled: true
+      size: 2Gi
+
+ospd_openvas:
+  replicaCount: 1
+  image:
+    pullPolicy: IfNotPresent
+    repository: "aleksanderllada/ospd-openvas"
+
+  secrets: {}
+
+  env: {}
+
+  service:
+    type: ClusterIP
+    port: "8080"
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    # limits:
+    #   cpu: 100m
+    #   memory: 128Mi
+
+  livenessProbe:
+    enabled: true
+    port: 8080
+    initialDelaySeconds: 5
+    timeoutSeconds: 5
+
+  readinessProbe:
+    enabled: true
+    port: 8080
+    initialDelaySeconds: 30
+    timeoutSeconds: 10
+    periodSeconds: 10
+    successThreshold: 1
+
+  syncNvtData:
+    enabled: true
+    image:
+      pullPolicy: IfNotPresent
+      repository: "aleksanderllada/gvm-ospd-openvas"
+    storage:
+      enabled: true
+      size: 5Gi
+    cronjob:
+      enabled: true
+      createServiceAccount: true
+
+  redis:
+    image:
+      repository: "redis"
+      tag: "6-alpine"
+      pullPolicy: IfNotPresent

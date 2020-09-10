@@ -1,0 +1,3 @@
+{{- if .Values.ingress.enabled }}
+  Go to http://{{ .Values.host }} to access your application
+{{- end }}

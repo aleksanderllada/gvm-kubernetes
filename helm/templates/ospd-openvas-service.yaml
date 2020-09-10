@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "fullname" . }}-ospd-openvas
+  labels:
+    chart: {{ template "fullname" . }}-ospd-openvas
+spec:
+  type: {{ .Values.ospd_openvas.service.type }}
+  ports:
+  - name: {{ template "fullname" . }}-ospd-openvas
+    port: {{ .Values.ospd_openvas.service.port }}
+    targetPort: {{ .Values.ospd_openvas.service.port }}
+    protocol: TCP
+  selector:
+    app: {{ template "fullname" . }}-ospd-openvas

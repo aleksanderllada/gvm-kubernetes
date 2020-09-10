@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "fullname" . }}-gvmd
+  labels:
+    chart: {{ template "fullname" . }}-gvmd
+spec:
+  type: {{ .Values.gvmd.service.type }}
+  ports:
+  - name: {{ template "fullname" . }}-gvmd
+    port: {{ .Values.gvmd.service.port }}
+    targetPort: {{ .Values.gvmd.service.port }}
+    protocol: TCP
+  selector:
+    app: {{ template "fullname" . }}-gvmd

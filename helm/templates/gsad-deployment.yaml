@@ -1,0 +1,110 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ template "fullname" . }}-gsad
+  annotations:
+{{- if .Values.annotations }}
+{{ toYaml .Values.annotations | indent 4 }}
+{{- end }}
+  labels:
+    chart: {{ template "fullname" . }}-gsad
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ template "fullname" . }}-gsad
+  template:
+    metadata:
+      annotations:
+{{- if .Values.podAnnotations }}
+{{ toYaml .Values.podAnnotations | indent 8 }}
+{{- end }}
+      labels:
+        app: {{ template "fullname" . }}-gsad
+    spec:
+      containers:
+        - name: gsad
+          image: "{{ .Values.gsad.image.repository }}:{{ .Values.version }}"
+          imagePullPolicy: {{ .Values.gsad.image.pullPolicy }}
+          args: 
+            - --foreground
+            - --http-only 
+            - --no-redirect
+            - --listen=0.0.0.0 
+            - --port={{ .Values.gsad.service.port }}
+            - --mlisten={{ template "fullname" . }}-gvmd-0.{{ template "fullname" . }}-gvmd
+            - --mport={{ .Values.gvmd.service.port }}
+          ports:
+            - name: gsa
+              containerPort: {{ .Values.gsad.service.port }}
+          {{- if or .Values.gsad.env .Values.gsad.secrets }}
+          env:
+            {{- range $key, $value := .Values.gsad.secrets }}
+            - name: {{ $key | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ template "fullname" $ }}-gsad-secrets
+                  key: {{ $key | quote }}
+            {{- end }}
+            {{- range $key, $value := .Values.gsad.env }}
+            - name: {{ $key | quote }}
+              value: {{ tpl $value $ | quote }}
+            {{- end }}
+          {{- end }}
+          {{- if .Values.gsad.livenessProbe.enabled }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.gsad.livenessProbe.path }}
+              port: {{ .Values.gsad.service.port }}
+            initialDelaySeconds: {{ .Values.gsad.livenessProbe.initialDelaySeconds }}
+            timeoutSeconds: {{ .Values.gsad.livenessProbe.timeoutSeconds }}
+          {{- end }}
+          {{- if .Values.gsad.readinessProbe.enabled }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.gsad.readinessProbe.path }}
+              port: {{ .Values.gsad.service.port }}
+            initialDelaySeconds: {{ .Values.gsad.readinessProbe.initialDelaySeconds }}
+            timeoutSeconds: {{ .Values.gsad.readinessProbe.timeoutSeconds }}
+            successThreshold: {{ .Values.gsad.readinessProbe.successThreshold }}
+            periodSeconds: {{ .Values.gsad.readinessProbe.periodSeconds }}
+          {{- end }}
+          resources:
+{{ toYaml .Values.gsad.resources | indent 12 }}
+          volumeMounts:
+            - name: configs
+              mountPath: /usr/local/etc/gvm/gsad_log.conf
+              subPath: gsad_log.conf
+            {{- if .Values.certificates.create }}
+            - name: ca-{{ .Values.certificates.domain }}
+              mountPath: /usr/var/lib/gvm/private/CA/cakey.pem
+              subPath: ca.key
+            - name: client-{{ .Values.certificates.domain }}
+              mountPath: /usr/var/lib/gvm/private/CA/clientkey.pem
+              subPath: tls.key
+            - name: server-{{ .Values.certificates.domain }}
+              mountPath: /usr/var/lib/gvm/private/CA/serverkey.pem
+              subPath: tls.key
+            - name: ca-{{ .Values.certificates.domain }}
+              mountPath: /usr/var/lib/gvm/CA/cacert.pem
+              subPath: ca.crt
+            - name: client-{{ .Values.certificates.domain }}
+              mountPath: /usr/var/lib/gvm/CA/clientcert.pem
+              subPath: tls.crt
+            - name: server-{{ .Values.certificates.domain }}
+              mountPath: /usr/var/lib/gvm/CA/servercert.pem
+              subPath: tls.crt
+            {{- end }}
+      volumes:
+        - name: configs
+          configMap:
+            name: {{ template "fullname" . }}-gsad-cm
+        - name: ca-{{ .Values.certificates.domain }}
+          secret:
+            secretName: {{ template "fullname" . }}-ca.{{ .Values.certificates.domain }}
+        - name: client-{{ .Values.certificates.domain }}
+          secret:
+            secretName: {{ template "fullname" . }}-client.{{ .Values.certificates.domain }}
+        - name: server-{{ .Values.certificates.domain }}
+          secret:
+            secretName: {{ template "fullname" . }}-server.{{ .Values.certificates.domain }}

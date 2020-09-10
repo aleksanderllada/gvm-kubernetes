@@ -1,0 +1,44 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "fullname" . }}-gsad-cm
+  annotations:
+{{- if .Values.annotations }}
+{{ toYaml .Values.annotations | indent 4 }}
+{{- end }}
+data:
+  gsad_log.conf: |
+    [gsad main]
+    prepend=%t %s %p
+    separator=:
+    prepend_time_format=%Y-%m-%d %Hh%M.%S %Z
+    file=/usr/local/var/log/gvm/gsad.log
+    level=64
+
+    [gsad  gmp]
+    prepend=%t %s %p
+    separator=:
+    prepend_time_format=%Y-%m-%d %Hh%M.%S %Z
+    file=/usr/local/var/log/gvm/gsad.log
+    level=64
+
+    [gsad i18n]
+    prepend=%t %s %p
+    separator=:
+    prepend_time_format=%Y-%m-%d %Hh%M.%S %Z
+    file=/usr/local/var/log/gvm/gsad.log
+    level=64
+
+    [gsad http]
+    prepend=%t %s %p
+    separator=:
+    prepend_time_format=%Y-%m-%d %Hh%M.%S %Z
+    file=/usr/local/var/log/gvm/gsad.log
+    level=64
+
+    [*]
+    prepend=%t %s %p
+    separator=:
+    prepend_time_format=%Y-%m-%d %Hh%M.%S %Z
+    file=/usr/local/var/log/gvm/gsad.log
+    level=64

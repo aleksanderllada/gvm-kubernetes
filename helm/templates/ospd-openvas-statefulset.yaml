@@ -1,0 +1,167 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ template "fullname" . }}-ospd-openvas
+  annotations:
+{{- if .Values.annotations }}
+{{ toYaml .Values.annotations | indent 4 }}
+{{- end }}
+  labels:
+    chart: {{ template "fullname" . }}-ospd-openvas
+spec:
+  serviceName: {{ template "fullname" . }}-ospd-openvas
+  replicas: {{ .Values.ospd_openvas.replicaCount }}
+  updateStrategy:
+    type: "RollingUpdate"
+  volumeClaimTemplates:
+  {{- if .Values.ospd_openvas.syncNvtData.storage.enabled }}
+  - metadata:
+      name: {{ template "fullname" . }}-ospd-openvas-data
+      namespace: security
+      annotations:
+{{- if .Values.podAnnotations }}
+{{ toYaml .Values.podAnnotations | indent 8 }}
+{{- end }}
+    spec:
+      accessModes:
+        - ReadWriteOnce
+      resources:
+        requests:
+          storage: {{ .Values.ospd_openvas.syncNvtData.storage.size }}
+  {{- end }}
+  selector:
+    matchLabels:
+      app: {{ template "fullname" . }}-ospd-openvas
+  template:
+    metadata:
+      annotations:
+{{- if .Values.podAnnotations }}
+{{ toYaml .Values.podAnnotations | indent 8 }}
+{{- end }}
+      labels:
+        app: {{ template "fullname" . }}-ospd-openvas
+    spec:
+      securityContext:
+        runAsUser: 1000
+        fsGroup: 1000
+      {{- if .Values.ospd_openvas.syncNvtData.enabled }}
+      initContainers:
+        - name: sync-nvt-data
+          image: {{ .Values.ospd_openvas.syncNvtData.image.repository }}:{{ .Values.version }}
+          imagePullPolicy: {{ .Values.ospd_openvas.syncNvtData.image.pullPolicy }}
+          securityContext:
+            runAsUser: 0
+            privileged: true
+          command:
+            - bash
+            - -c
+            - /sync-greenbone-nvt-data.sh
+          volumeMounts:
+            {{- if .Values.ospd_openvas.syncNvtData.storage.enabled }}
+            - name: gvm-ospd-openvas-data
+              mountPath: /usr/local/var/lib/openvas/plugins
+            {{- end }}
+      {{- end }}
+      containers:
+        - name: redis
+          image: {{ .Values.ospd_openvas.redis.image.repository }}:{{ .Values.ospd_openvas.redis.image.tag }}
+          imagePullPolicy: {{ .Values.ospd_openvas.redis.image.pullPolicy }}
+          args:
+            - redis-server
+            - /usr/local/etc/redis/redis.conf
+          volumeMounts:
+            - name: configs
+              mountPath: /usr/local/etc/redis/redis.conf
+              subPath: redis.conf
+            - name: socket
+              mountPath: /redis
+        - name: ospd-openvas
+          image: {{ .Values.ospd_openvas.image.repository }}:{{ .Values.version }}
+          imagePullPolicy: {{ .Values.ospd_openvas.image.pullPolicy }}
+          ports:
+            - name: ospd-openvas
+              containerPort: {{ .Values.ospd_openvas.service.port }}
+          securityContext:
+            runAsUser: 0
+            privileged: true
+          {{- if or .Values.ospd_openvas.env .Values.ospd_openvas.secrets }}
+          env:
+          {{- range $key, $value := .Values.ospd_openvas.secrets }}
+          - name: {{ $key | quote }}
+            valueFrom:
+              secretKeyRef:
+                name: {{ template "fullname" $ }}-ospd-openvas-secrets
+                key: {{ $key | quote }}
+          {{- end }}
+          {{- range $key, $value := .Values.ospd_openvas.env }}
+          - name: {{ $key | quote }}
+            value: {{ tpl $value $ | quote }}
+          {{- end }}
+          {{- end }}
+          {{- if .Values.ospd_openvas.livenessProbe.enabled }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.ospd_openvas.livenessProbe.path }}
+              port: {{ .Values.ospd_openvas.service.port }}
+            initialDelaySeconds: {{ .Values.ospd_openvas.livenessProbe.initialDelaySeconds }}
+            timeoutSeconds: {{ .Values.ospd_openvas.livenessProbe.timeoutSeconds }}
+          {{- end }}
+          {{- if .Values.ospd_openvas.readinessProbe.enabled }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.ospd_openvas.readinessProbe.path }}
+              port: {{ .Values.ospd_openvas.service.port }}
+            initialDelaySeconds: {{ .Values.ospd_openvas.readinessProbe.initialDelaySeconds }}
+            timeoutSeconds: {{ .Values.ospd_openvas.readinessProbe.timeoutSeconds }}
+            successThreshold: {{ .Values.ospd_openvas.readinessProbe.successThreshold }}
+            periodSeconds: {{ .Values.ospd_openvas.readinessProbe.periodSeconds }}
+          {{- end }}
+          resources:
+{{ toYaml .Values.ospd_openvas.resources | indent 12 }}
+          volumeMounts:
+            {{- if .Values.ospd_openvas.syncNvtData.storage.enabled }}
+            - name: gvm-ospd-openvas-data
+              mountPath: /usr/local/var/lib/openvas/plugins
+            {{- end }}
+            - name: configs
+              mountPath: /usr/local/etc/openvas/openvas.conf
+              subPath: openvas.conf
+            {{- if .Values.certificates.create }}
+            - name: ca-{{ .Values.certificates.domain }}
+              mountPath: /usr/var/lib/gvm/private/CA/cakey.pem
+              subPath: ca.key
+            - name: client-{{ .Values.certificates.domain }}
+              mountPath: /usr/var/lib/gvm/private/CA/clientkey.pem
+              subPath: tls.key
+            - name: server-{{ .Values.certificates.domain }}
+              mountPath: /usr/var/lib/gvm/private/CA/serverkey.pem
+              subPath: tls.key
+            - name: ca-{{ .Values.certificates.domain }}
+              mountPath: /usr/var/lib/gvm/CA/cacert.pem
+              subPath: ca.crt
+            - name: client-{{ .Values.certificates.domain }}
+              mountPath: /usr/var/lib/gvm/CA/clientcert.pem
+              subPath: tls.crt
+            - name: server-{{ .Values.certificates.domain }}
+              mountPath: /usr/var/lib/gvm/CA/servercert.pem
+              subPath: tls.crt
+            {{- end }}
+            - name: socket
+              mountPath: /redis
+      volumes:
+        - name: configs
+          configMap:
+            name: {{ template "fullname" . }}-ospd-openvas-cm
+        {{- if .Values.certificates.create }}
+        - name: ca-{{ .Values.certificates.domain }}
+          secret:
+            secretName: {{ template "fullname" . }}-ca.{{ .Values.certificates.domain }}
+        - name: client-{{ .Values.certificates.domain }}
+          secret:
+            secretName: {{ template "fullname" . }}-client.{{ .Values.certificates.domain }}
+        - name: server-{{ .Values.certificates.domain }}
+          secret:
+            secretName: {{ template "fullname" . }}-server.{{ .Values.certificates.domain }}
+        {{- end }}
+        - name: socket
+          emptyDir: {}

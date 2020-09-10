@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "fullname" . }}-gsad
+  labels:
+    chart: {{ template "fullname" . }}-gsad
+spec:
+  type: {{ .Values.gsad.service.type }}
+  ports:
+  - name: {{ template "fullname" . }}-gsad
+    port: {{ .Values.gsad.service.port }}
+    targetPort: {{ .Values.gsad.service.port }}
+    protocol: TCP
+  selector:
+    app: {{ template "fullname" . }}-gsad

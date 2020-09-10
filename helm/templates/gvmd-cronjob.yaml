@@ -1,0 +1,64 @@
+{{- if .Values.gvmd.syncFeedData.cronjob.enabled }}
+{{- if .Values.gvmd.syncFeedData.cronjob.createServiceAccount }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ template "fullname" . }}-gvmd-service-account
+automountServiceAccountToken: true
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ template "fullname" . }}-gvmd-exec-role
+rules:
+- apiGroups: [""]
+  resources: ["pods/exec"]
+  verbs: ["create"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ template "fullname" . }}-gvmd-exec-role-binding
+subjects:
+- kind: ServiceAccount
+  name: {{ template "fullname" . }}-gvmd-service-account
+  namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ template "fullname" . }}-gvmd-exec-role
+{{- end }}
+---
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: {{ template "fullname" . }}-gvmd-sync-feed-data
+spec:
+  schedule: "0 1 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: {{ template "fullname" . }}-gvmd-service-account
+          automountServiceAccountToken: true
+          containers:
+          - name: kubectl
+            image: bitnami/kubectl:latest
+            args:
+              - exec
+              - -it
+              - -n
+              - security
+              - {{ template "fullname" . }}-gvmd-0
+              - -c
+              - gvmd
+              - --
+              - /bin/bash 
+              - -c 
+              - "/sync-greenbone-feed-data.sh --resync"
+          restartPolicy: Never
+{{- end }}

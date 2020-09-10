@@ -1,0 +1,274 @@
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ template "fullname" . }}-gvmd
+  annotations:
+{{- if .Values.annotations }}
+{{ toYaml .Values.annotations | indent 4 }}
+{{- end }}
+  labels:
+    chart: {{ template "fullname" . }}-gvmd
+spec:
+  serviceName: {{ template "fullname" . }}-gvmd
+  replicas: 1
+  updateStrategy:
+    type: "RollingUpdate"
+  volumeClaimTemplates:
+{{- if .Values.gvmd.postgres.storage.enabled }}
+  - metadata:
+      name: {{ template "fullname" . }}-gvmd-postgres-data
+      namespace: security
+      annotations:
+{{- if .Values.podAnnotations }}
+{{ toYaml .Values.podAnnotations | indent 8 }}
+{{- end }}
+    spec:
+      accessModes:
+        - ReadWriteOnce
+      resources:
+        requests:
+          storage: {{ .Values.gvmd.postgres.storage.size }}
+{{- end}}
+{{- if .Values.gvmd.volumes.gnupg.enabled }}
+  - metadata:
+      name: {{ template "fullname" . }}-gvmd-gnupg
+      namespace: security
+      annotations:
+{{- if .Values.podAnnotations }}
+{{ toYaml .Values.podAnnotations | indent 8 }}
+{{- end }}
+    spec:
+      accessModes:
+        - ReadWriteOnce
+      resources:
+        requests:
+          storage: {{ .Values.gvmd.volumes.gnupg.size }}
+{{- end }}
+{{- if .Values.gvmd.volumes.gvmd.enabled }}
+  - metadata:
+      name: {{ template "fullname" . }}-gvmd-data
+      namespace: security
+      annotations:
+{{- if .Values.podAnnotations }}
+{{ toYaml .Values.podAnnotations | indent 8 }}
+{{- end }}
+    spec:
+      accessModes:
+        - ReadWriteOnce
+      resources:
+        requests:
+          storage: {{ .Values.gvmd.volumes.gvmd.size }}
+{{- end }}
+{{- if .Values.gvmd.volumes.scap.enabled }}
+  - metadata:
+      name: {{ template "fullname" . }}-gvmd-scap-data
+      namespace: security
+      annotations:
+{{- if .Values.podAnnotations }}
+{{ toYaml .Values.podAnnotations | indent 8 }}
+{{- end }}
+    spec:
+      accessModes:
+        - ReadWriteOnce
+      resources:
+        requests:
+          storage: {{ .Values.gvmd.volumes.scap.size }}
+{{- end }}
+{{- if .Values.gvmd.volumes.cert.enabled }}
+  - metadata:
+      name: {{ template "fullname" . }}-gvmd-cert-data
+      namespace: security
+      annotations:
+{{- if .Values.podAnnotations }}
+{{ toYaml .Values.podAnnotations | indent 8 }}
+{{- end }}
+    spec:
+      accessModes:
+        - ReadWriteOnce
+      resources:
+        requests:
+          storage: {{ .Values.gvmd.volumes.cert.size }}
+{{- end }}
+  selector:
+    matchLabels:
+      app: {{ template "fullname" . }}-gvmd
+  template:
+    metadata:
+      annotations:
+{{- if .Values.podAnnotations }}
+{{ toYaml .Values.podAnnotations | indent 8 }}
+{{- end }}
+      labels:
+        app: {{ template "fullname" . }}-gvmd
+    spec:
+      securityContext:
+        runAsUser: 103
+        runAsGroup: 105
+        fsGroup: 105
+      {{- if .Values.gvmd.syncFeedData.enabled }}
+      initContainers:
+        - name: sync-feed-data
+          image: "{{ .Values.gvmd.syncFeedData.image.repository }}:{{ .Values.version }}"
+          imagePullPolicy: {{ .Values.gvmd.syncFeedData.image.pullPolicy }}
+          command:
+            - /bin/bash 
+            - -c
+            - /sync-greenbone-feed-data.sh
+          volumeMounts:
+            {{- if .Values.gvmd.volumes.gvmd.enabled }}
+            - name: gvm-gvmd-data
+              mountPath: /usr/local/var/lib/gvm/data-objects
+            {{- end }}
+            {{- if .Values.gvmd.volumes.scap.enabled }}
+            - name: gvm-gvmd-scap-data
+              mountPath: /usr/local/var/lib/gvm/scap-data
+            {{- end }}
+            {{- if .Values.gvmd.volumes.cert.enabled }}
+            - name: gvm-gvmd-cert-data
+              mountPath: /usr/local/var/lib/gvm/cert-data
+            {{- end }}
+      {{- end }}
+      containers:
+        - name: postgres
+          image: "{{ .Values.gvmd.postgres.image.repository }}:{{ .Values.version }}"
+          imagePullPolicy: {{ .Values.gvmd.postgres.image.pullPolicy }}
+          env:
+          - name: POSTGRES_HOST_AUTH_METHOD
+            value: trust
+          - name: PGDATA
+            value: /var/lib/postgresql/data/pgdata
+          - name: POSTGRES_USER
+            value: root
+          - name: POSTGRES_DB
+            value: gvmd
+          readinessProbe:
+            exec:
+              command:
+              - pg_isready
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command:
+              - pg_isready
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          volumeMounts:
+            - name: configs
+              mountPath: /etc/postgresql/11/main/postgresql.conf
+              subPath: postgresql.conf
+            - name: socket
+              mountPath: /var/run/postgresql
+            {{- if .Values.gvmd.postgres.storage.enabled }}
+            - name: {{ template "fullname" . }}-gvmd-postgres-data
+              mountPath: /var/lib/postgresql/data/
+            {{- end }}
+        - name: gvmd
+          image: "{{ .Values.gvmd.image.repository }}:{{ .Values.version }}"
+          imagePullPolicy: {{ .Values.gvmd.image.pullPolicy }}
+          securityContext:
+            runAsUser: 0
+            privileged: true
+          args:
+            - --foreground
+            - --listen=0.0.0.0
+            - --port={{ .Values.gvmd.service.port }}
+          ports:
+            - name: gvmd
+              containerPort: {{ .Values.gvmd.service.port }}
+          env:
+            - name: OPENVAS_SCANNER_HOST
+              value: {{ template "fullname" $ }}-ospd-openvas-0.{{ template "fullname" $ }}-ospd-openvas
+            - name: OPENVAS_SCANNER_PORT
+              value: {{ .Values.ospd_openvas.service.port }}
+          {{- if or .Values.gvmd.env .Values.gvmd.secrets }}
+            {{- range $key, $value := .Values.gvmd.secrets }}
+            - name: {{ $key | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ template "fullname" $ }}-gvmd-secrets
+                  key: {{ $key | quote }}
+            {{- end }}
+            {{- range $key, $value := .Values.gvmd.env }}
+            - name: {{ $key | quote }}
+              value: {{ tpl $value $ | quote }}
+            {{- end }}
+          {{- end }}
+          {{- if .Values.gvmd.livenessProbe.enabled }}
+          livenessProbe:
+            tcpSocket:
+              port: {{ .Values.gvmd.service.port }}
+            initialDelaySeconds: {{ .Values.gvmd.livenessProbe.initialDelaySeconds }}
+            timeoutSeconds: {{ .Values.gvmd.livenessProbe.timeoutSeconds }}
+          {{- end }}
+          {{- if .Values.gvmd.readinessProbe.enabled }}
+          readinessProbe:
+            tcpSocket:
+              port: {{ .Values.gvmd.service.port }}
+            initialDelaySeconds: {{ .Values.gvmd.readinessProbe.initialDelaySeconds }}
+            timeoutSeconds: {{ .Values.gvmd.readinessProbe.timeoutSeconds }}
+            successThreshold: {{ .Values.gvmd.readinessProbe.successThreshold }}
+            periodSeconds: {{ .Values.gvmd.readinessProbe.periodSeconds }}
+          {{- end }}
+          resources:
+{{ toYaml .Values.gvmd.resources | indent 12 }}
+          volumeMounts:
+            - name: configs
+              mountPath: /usr/local/etc/gvm/gvmd_log.conf
+              subPath: gvmd_log.conf
+            {{- if .Values.gvmd.volumes.gnupg.enabled }}
+            - name: gvm-gvmd-gnupg
+              mountPath: /usr/local/var/lib/gvm/gvmd/gnupg
+            {{- end }}
+            {{- if .Values.gvmd.volumes.gvmd.enabled }}
+            - name: gvm-gvmd-data
+              mountPath: /usr/local/var/lib/gvm/data-objects
+            {{- end }}
+            {{- if .Values.gvmd.volumes.scap.enabled }}
+            - name: gvm-gvmd-scap-data
+              mountPath: /usr/local/var/lib/gvm/scap-data
+            {{- end  }}
+            {{- if .Values.gvmd.volumes.cert.enabled }}
+            - name: gvm-gvmd-cert-data
+              mountPath: /usr/local/var/lib/gvm/cert-data
+            {{- end }}
+            {{- if .Values.certificates.create }}
+            - name: ca-{{ .Values.certificates.domain }}
+              mountPath: /usr/local/var/lib/gvm/private/CA/cakey.pem
+              subPath: ca.key
+            - name: client-{{ .Values.certificates.domain }}
+              mountPath: /usr/local/var/lib/gvm/private/CA/clientkey.pem
+              subPath: tls.key
+            - name: server-{{ .Values.certificates.domain }}
+              mountPath: /usr/local/var/lib/gvm/private/CA/serverkey.pem
+              subPath: tls.key
+            - name: ca-{{ .Values.certificates.domain }}
+              mountPath: /usr/local/var/lib/gvm/CA/cacert.pem
+              subPath: ca.crt
+            - name: client-{{ .Values.certificates.domain }}
+              mountPath: /usr/local/var/lib/gvm/CA/clientcert.pem
+              subPath: tls.crt
+            - name: server-{{ .Values.certificates.domain }}
+              mountPath: /usr/local/var/lib/gvm/CA/servercert.pem
+              subPath: tls.crt
+            {{- end }}
+            - name: socket
+              mountPath: /var/run/postgresql
+      volumes:
+      - name: configs
+        configMap:
+          name: {{ template "fullname" . }}-gvmd-cm
+      {{- if .Values.certificates.create }}
+      - name: ca-{{ .Values.certificates.domain }}
+        secret:
+          secretName: {{ template "fullname" . }}-ca.{{ .Values.certificates.domain }}
+      - name: client-{{ .Values.certificates.domain }}
+        secret:
+          secretName: {{ template "fullname" . }}-client.{{ .Values.certificates.domain }}
+      - name: server-{{ .Values.certificates.domain }}
+        secret:
+          secretName: {{ template "fullname" . }}-server.{{ .Values.certificates.domain }}
+      {{- end }}
+      - name: socket
+        emptyDir: {}

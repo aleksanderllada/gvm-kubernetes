@@ -1,0 +1,19 @@
+{{- if .Values.certificates.create }}
+apiVersion: cert-manager.io/v1alpha2
+kind: Certificate
+metadata:
+  name: {{ template "fullname" . }}-ca.{{ .Values.certificates.domain }}
+  annotations:
+{{- if .Values.annotations }}
+{{ toYaml .Values.annotations | indent 4 }}
+{{- end }}
+spec:
+  secretName: ca.{{ .Values.certificates.domain }}
+  commonName: ca.{{ .Values.certificates.domain }}
+  isCA: true
+  issuerRef:
+    name: selfsigning-issuer
+    kind: ClusterIssuer
+  organization:
+    - GVM Users
+{{- end }}

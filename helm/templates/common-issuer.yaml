@@ -1,0 +1,13 @@
+{{- if .Values.certificates.create }}
+apiVersion: cert-manager.io/v1alpha2
+kind: Issuer
+metadata:
+  name: {{ template "fullname" . }}-ca.{{ .Values.certificates.domain }}
+  annotations:
+{{- if .Values.annotations }}
+{{ toYaml .Values.annotations | indent 4 }}
+{{- end }}
+spec:
+  ca:
+    secretName: ca.{{ .Values.certificates.domain }}
+{{- end }}
