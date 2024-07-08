@@ -26,3 +26,6 @@ What's "complicated about" `gvmd` and `ospd-openvas` is that both of them rely o
 A good solution is to have `gvmd` and Postgres run in the same pod in Kubernetes, allowing them to share sockets through an emptyDir volume. The same goes for `ospd-openvas` and Redis. 
 
 The same principle can be applied running all containers locally, using shared volumes.
+
+# TEST
+Something something
